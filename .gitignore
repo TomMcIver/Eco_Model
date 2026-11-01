@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+.uv-cache/
+# Local data store: raw snapshots and DuckDB are reproducible artifacts, not source
+data/raw/
+data/store/
+data/*.duckdb
+reports/
