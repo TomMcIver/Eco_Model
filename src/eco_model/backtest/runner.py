@@ -18,7 +18,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Mapping, Sequence
 
 import pandas as pd
 
@@ -103,10 +103,12 @@ def _issue_all(store, track, schedule, forecasters, horizons, seed, available_at
     return pd.DataFrame(rows, columns=list(RECORD_COLUMNS))
 
 
-def run_id_for(track: VintageTrack, schedule, methods, horizons, seed: int, version: str) -> str:
+def run_id_for(track: VintageTrack, schedule, methods, horizons, seed: int, version: str,
+               data_state: Mapping[str, str] | None = None) -> str:
     payload = json.dumps({
         "track": track.value, "origins": [o.isoformat() for o, _ in schedule],
         "methods": list(methods), "horizons": list(horizons), "seed": seed, "version": version,
+        "data_state": dict(data_state or {}),
     }, sort_keys=True)
     return f"{track.value}-{hashlib.sha256(payload.encode()).hexdigest()[:12]}"
 
@@ -149,7 +151,8 @@ def run_backtest(
     version = code_version()
     methods = [f.name for f in forecasters] + ["ensemble_equal", "ensemble_perf"]
     result.attrs = {
-        "run_id": run_id_for(track, schedule, methods, horizons, seed, version),
+        "run_id": run_id_for(track, schedule, methods, horizons, seed, version,
+                             {k: str(v) for k, v in tables.revised_as_of.items()}),
         "track": track.value, "seed": seed, "code_version": version, "methods": methods,
         "horizons": list(horizons), "interval_error_pool": err_col,
         "revised_as_of": dict(tables.revised_as_of),

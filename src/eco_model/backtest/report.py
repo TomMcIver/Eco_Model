@@ -118,6 +118,22 @@ def _split_text(eval_start) -> str:
             "development-interval results only.")
 
 
+def _run_issues(meta) -> list[str]:
+    """Skipped origins and forecaster failures, so they are visible in the report itself."""
+    skipped, failures = meta.get("skipped_origins") or [], meta.get("failures") or []
+    dropped = meta.get("dropped_origins") or []
+    lines = ["## Skipped origins and failures\n"]
+    if not (skipped or failures or dropped):
+        return lines + ["None: every scheduled origin was issued by every method.\n"]
+    lines.append(f"Skipped origins: {len(skipped)}; dropped origins: {len(dropped)}; "
+                 f"forecaster failures: {len(failures)}. Scores exclude these cases.\n")
+    for item in (skipped + dropped)[:20]:
+        lines.append(f"- skipped/dropped: `{item}`")
+    for item in failures[:20]:
+        lines.append(f"- failure: `{item}`")
+    return lines + [""]
+
+
 def render_markdown(frame, metrics, revision, weights, meta, eval_start) -> str:
     lines = [f"# Backtest report `{meta.get('run_id', 'unknown')}`\n",
              "## Run metadata\n",
@@ -128,6 +144,7 @@ def render_markdown(frame, metrics, revision, weights, meta, eval_start) -> str:
              "Error sign convention: error = outcome - forecast. `rel_mae_vs_X` = "
              "MAE(method)/MAE(X) on identical pairs; below 1 beats the baseline.\n"]
     lines += _sections(metrics, LEADERBOARD_COLS, "Leaderboards")
+    lines += _run_issues(meta)
     lines += ["## Ensemble weights summary\n", markdown_table(weights)]
     lines += _sections(metrics, COVERAGE_COLS, "Interval coverage")
     lines += ["## Revision sensitivity\n", markdown_table(revision)]

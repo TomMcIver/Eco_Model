@@ -110,3 +110,23 @@ def test_write_report_end_to_end(tmp_path, store, schedule, forecasters, ensembl
 def test_markdown_table_handles_empty_and_nan():
     assert markdown_table(pd.DataFrame()) == "_no rows_\n"
     assert "n/a" in markdown_table(pd.DataFrame({"a": [float("nan")]}))
+
+
+def test_report_lists_failures_and_skipped_origins():
+    from eco_model.backtest.report import _run_issues
+
+    meta = {"skipped_origins": ["2017-03-31"], "dropped_origins": [],
+            "failures": [{"origin": "2020-06-30", "method": "var", "error": "boom"}]}
+    text = "\n".join(_run_issues(meta))
+    assert "2017-03-31" in text and "boom" in text and "failures: 1" in text
+    assert "None:" in "\n".join(_run_issues({}))
+
+
+def test_run_id_changes_with_data_state():
+    from eco_model.backtest.runner import run_id_for
+    from eco_model.contracts import VintageTrack
+
+    sched = [(__import__("datetime").datetime(2020, 1, 1), None)]
+    a = run_id_for(VintageTrack.REAL_TIME, sched, ["m"], [1], 0, "v", {"gdp": "2026-06-01"})
+    b = run_id_for(VintageTrack.REAL_TIME, sched, ["m"], [1], 0, "v", {"gdp": "2026-09-01"})
+    assert a != b
