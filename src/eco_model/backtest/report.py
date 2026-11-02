@@ -15,7 +15,9 @@ import numpy as np
 import pandas as pd
 
 from eco_model.backtest.metrics import compute_metrics, revision_sensitivity
-from eco_model.backtest.origins import label_segments
+from eco_model.backtest.ensembles import PERF_UNAVAILABLE
+from eco_model.backtest.origins import STRESS_WINDOWS, label_regimes, label_segments
+from eco_model.backtest.plots import write_plots
 from eco_model.contracts import VintageTrack
 
 QUANTILE_PROBS = (0.025, 0.10, 0.25, 0.75, 0.90, 0.975)
@@ -65,7 +67,7 @@ def weights_summary(frame: pd.DataFrame) -> pd.DataFrame:
     perf = frame[frame["method"] == "ensemble_perf"]
     rows = []
     for (track, target, horizon), g in perf.groupby(["track", "target", "horizon"], sort=True):
-        available = g[~g["notes"].str.contains("unavailable", na=False)]
+        available = g[~g["notes"].str.contains(PERF_UNAVAILABLE, regex=False, na=False)]
         weights = pd.DataFrame([w for w in available["weights"] if isinstance(w, Mapping)])
         row = {"track": track, "target": target, "horizon": horizon, "n_origins": len(g),
                "n_perf_weights_available": len(available)}
@@ -118,6 +120,29 @@ def _split_text(eval_start) -> str:
             "development-interval results only.")
 
 
+def _regime_section(regime_metrics) -> list[str]:
+    windows = "; ".join(f"{n} {lo}-{hi}" for n, lo, hi in STRESS_WINDOWS)
+    out = ["## Calm versus volatile targets\n",
+           f"Targets are `volatile` if their quarter lies in a pre-declared stress window "
+           f"({windows}); otherwise `calm`. Windows are fixed in code, not tuned to results. "
+           "Cells are small, so read these as descriptive only.\n"]
+    if regime_metrics is None or regime_metrics.empty:
+        return out + ["_no scored pairs_\n"]
+    for values, cell in regime_metrics.groupby(["track", "outcome", "target", "horizon"], sort=True):
+        out.append("### " + " / ".join(f"{k}={v}" for k, v in zip(
+            ["track", "outcome", "target", "horizon"], values)) + "\n")
+        out.append(markdown_table(cell[["segment", "method", "n_pairs", "mae", "bias",
+                                        "rel_mae_vs_historical_mean"]].sort_values(["segment", "method"])))
+    return out
+
+
+def _plot_section(plots) -> list[str]:
+    if not plots:
+        return ["## Diagnostic plots\n", "_not generated (install the `plots` extra: "
+                "`uv sync --extra plots`)_\n"]
+    return ["## Diagnostic plots\n", *[f"![{p}]({p})\n" for p in plots]]
+
+
 def _run_issues(meta) -> list[str]:
     """Skipped origins and forecaster failures, so they are visible in the report itself."""
     skipped, failures = meta.get("skipped_origins") or [], meta.get("failures") or []
@@ -134,7 +159,8 @@ def _run_issues(meta) -> list[str]:
     return lines + [""]
 
 
-def render_markdown(frame, metrics, revision, weights, meta, eval_start) -> str:
+def render_markdown(frame, metrics, revision, weights, meta, eval_start,
+                    regime_metrics=None, plots=()) -> str:
     lines = [f"# Backtest report `{meta.get('run_id', 'unknown')}`\n",
              "## Run metadata\n",
              "```json\n" + json.dumps(meta, indent=2, sort_keys=True, default=str) + "\n```\n",
@@ -147,6 +173,8 @@ def render_markdown(frame, metrics, revision, weights, meta, eval_start) -> str:
     lines += _run_issues(meta)
     lines += ["## Ensemble weights summary\n", markdown_table(weights)]
     lines += _sections(metrics, COVERAGE_COLS, "Interval coverage")
+    lines += _regime_section(regime_metrics)
+    lines += _plot_section(plots)
     lines += ["## Revision sensitivity\n", markdown_table(revision)]
     lines.append(LIMITATIONS.format(pseudo=VintageTrack.PSEUDO_OOS.value,
                                     real=VintageTrack.REAL_TIME.value, split=_split_text(eval_start)))
@@ -175,6 +203,7 @@ def write_report(
     labelled = label_segments(frame, eval_start)
     metrics = compute_metrics(labelled, n_boot=n_boot, seed=seed)
     revision = revision_sensitivity(labelled)
+    regime_metrics = compute_metrics(label_regimes(frame), n_boot=n_boot, seed=seed)
     weights = weights_summary(labelled)
     out_dir = Path(root) / str(run_meta.get("run_id", "run"))
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -182,7 +211,10 @@ def write_report(
     _write_table(metrics, out_dir / "metrics")
     _write_table(revision, out_dir / "revision_sensitivity")
     _write_table(weights, out_dir / "ensemble_weights")
+    _write_table(regime_metrics, out_dir / "regime_metrics")
+    plots = write_plots(labelled, metrics, out_dir)
     (out_dir / "run_meta.json").write_text(json.dumps(run_meta, indent=2, default=str), "utf-8")
-    text = render_markdown(labelled, metrics, revision, weights, run_meta, eval_start)
+    text = render_markdown(labelled, metrics, revision, weights, run_meta, eval_start,
+                           regime_metrics, plots)
     (out_dir / "report.md").write_text(text, encoding="utf-8")
     return out_dir

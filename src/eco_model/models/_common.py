@@ -19,6 +19,8 @@ def validate_history(history: pd.DataFrame) -> None:
         raise TypeError("history must have a quarterly PeriodIndex")
     if not index.is_monotonic_increasing or not index.is_unique:
         raise ValueError("history index must be unique and sorted ascending")
+    if len(index) > 1 and (index[-1] - index[0]).n != len(index) - 1:
+        raise ValueError("history index must hold consecutive quarters; reindex gaps to NaN first")
     unknown = [c for c in history.columns if c not in TARGETS]
     if unknown:
         raise ValueError(f"history has columns that are not targets: {unknown}")

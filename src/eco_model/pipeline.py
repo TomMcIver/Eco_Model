@@ -45,7 +45,8 @@ class CalendarAvailability:
         return None if any(s is None for s in starts) else max(starts)
 
 
-def _issuable(schedule: pd.DataFrame, calendar: CalendarAvailability) -> pd.DataFrame:
+def _issuable(schedule: pd.DataFrame, calendar: CalendarAvailability,
+              now: pd.Timestamp | None = None) -> pd.DataFrame:
     """Drop origins that could not have been issued.
 
     An assumed lag is only a stand-in for releases older than the archived
@@ -55,7 +56,7 @@ def _issuable(schedule: pd.DataFrame, calendar: CalendarAvailability) -> pd.Data
     coverage = calendar.coverage_start()
     in_window = schedule["ref_quarter"] >= coverage if coverage is not None else False
     assumed_in_window = in_window & schedule["assumed_lag_used"]
-    future = schedule["origin"] > pd.Timestamp.now(tz="UTC")
+    future = schedule["origin"] > (now if now is not None else pd.Timestamp.now(tz="UTC"))
     kept = schedule.loc[~(assumed_in_window | future)].reset_index(drop=True)
     kept.attrs = dict(schedule.attrs)
     kept.attrs["dropped_origins"] = [
@@ -75,6 +76,7 @@ class BacktestConfig:
     horizons: tuple[int, ...] = HORIZONS
     seed: int = 0
     n_boot: int = 1000
+    now: pd.Timestamp | None = None  # pin the wall clock for reproducible schedules
 
 
 def run_track(store: DuckDBObservationStore, config: BacktestConfig, out_root: Path) -> Path:
@@ -83,7 +85,8 @@ def run_track(store: DuckDBObservationStore, config: BacktestConfig, out_root: P
     # DEC-004: only the pseudo-OOS track may use an assumed publication lag.
     lag = assumed_publication_lag_days if config.track is VintageTrack.PSEUDO_OOS else None
     schedule = _issuable(
-        origin_schedule(config.start, config.end, calendar, assumed_lag_days=lag), calendar
+        origin_schedule(config.start, config.end, calendar, assumed_lag_days=lag), calendar,
+        config.now,
     )
     available_at = calendar if config.track is VintageTrack.PSEUDO_OOS else None
     frame = run_backtest(

@@ -130,3 +130,30 @@ def test_run_id_changes_with_data_state():
     a = run_id_for(VintageTrack.REAL_TIME, sched, ["m"], [1], 0, "v", {"gdp": "2026-06-01"})
     b = run_id_for(VintageTrack.REAL_TIME, sched, ["m"], [1], 0, "v", {"gdp": "2026-09-01"})
     assert a != b
+
+
+def test_regime_labels_follow_declared_windows():
+    import pandas as pd
+
+    from eco_model.backtest.origins import label_regimes, regime_of
+
+    assert regime_of(pd.Period("2020Q2", "Q")) == "volatile"
+    assert regime_of(pd.Period("2015Q2", "Q")) == "calm"
+    frame = pd.DataFrame({"target_period": [pd.Period("2009Q1", "Q"), pd.Period("2012Q1", "Q")]})
+    assert list(label_regimes(frame)["segment"]) == ["volatile", "calm"]
+
+
+def test_plots_written_when_matplotlib_present(tmp_path):
+    import pandas as pd
+    import pytest
+
+    pytest.importorskip("matplotlib")
+    from eco_model.backtest.plots import write_plots
+
+    frame = pd.DataFrame({
+        "track": "real_time", "method": ["persistence"] * 3, "target": "gdp_growth_qoq_pct",
+        "horizon": 1, "error_first": [0.1, -0.2, 0.3],
+        "target_period": pd.period_range("2019Q1", periods=3, freq="Q")})
+    metrics = pd.DataFrame({"method": ["persistence"], "coverage_50": [0.4],
+                            "coverage_80": [0.7], "coverage_95": [0.9]})
+    assert set(write_plots(frame, metrics, tmp_path)) == {"errors_over_time.png", "calibration.png"}

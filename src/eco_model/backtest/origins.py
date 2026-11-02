@@ -91,3 +91,21 @@ def label_segments(
     if eval_start is None:
         return frame.assign(segment="all")
     return frame.assign(segment=frame["origin"].map(lambda o: segment_of(o, eval_start)))
+
+
+# Fixed, pre-declared stress windows (by target quarter); not tuned to results.
+STRESS_WINDOWS: tuple[tuple[str, pd.Period, pd.Period], ...] = (
+    ("global_financial_crisis", pd.Period("2008Q4", "Q"), pd.Period("2009Q4", "Q")),
+    ("covid", pd.Period("2020Q1", "Q"), pd.Period("2021Q4", "Q")),
+)
+
+
+def regime_of(target_period: pd.Period) -> str:
+    """``volatile`` if the target quarter lies in a declared stress window, else ``calm``."""
+    inside = any(lo <= target_period <= hi for _, lo, hi in STRESS_WINDOWS)
+    return "volatile" if inside else "calm"
+
+
+def label_regimes(frame: pd.DataFrame) -> pd.DataFrame:
+    """Copy of ``frame`` with ``segment`` set to the calm/volatile regime of the target quarter."""
+    return frame.assign(segment=frame["target_period"].map(regime_of))

@@ -52,4 +52,8 @@ def to_targets(raw: dict[str, pd.Series]) -> pd.DataFrame:
         UNEMPLOYMENT: raw[RAW_UNEMPLOYMENT].sort_index().astype(float),
     }
     frame = pd.concat(columns, axis=1).sort_index()
-    return frame.dropna(how="all")
+    frame = frame.dropna(how="all")
+    if frame.empty:
+        return frame
+    # keep interior quarters where every target is missing as NaN rows, so the index stays consecutive
+    return frame.reindex(pd.period_range(frame.index.min(), frame.index.max(), freq="Q"))

@@ -87,3 +87,18 @@ def test_zero_level_does_not_create_minus_100_percent_growth():
     growth = gdp_growth_qoq(level)
 
     assert growth.isna().all()
+
+
+def test_to_targets_keeps_interior_all_missing_quarters_as_nan_rows():
+    import pandas as pd
+
+    from eco_model.contracts import RAW_CPI_INDEX, RAW_GDP_LEVEL, RAW_UNEMPLOYMENT
+    from eco_model.transforms import to_targets
+
+    idx = pd.PeriodIndex(["2020Q1", "2020Q2", "2021Q1", "2021Q2"], freq="Q")
+    nan = [float("nan")] * 4
+    raw = {RAW_GDP_LEVEL: pd.Series(nan, idx), RAW_CPI_INDEX: pd.Series(nan, idx),
+           RAW_UNEMPLOYMENT: pd.Series([5.0, 5.1, 4.9, 4.8], idx)}
+    out = to_targets(raw)
+    assert len(out) == 6 and out.index.is_monotonic_increasing
+    assert out.loc[pd.Period("2020Q3", "Q")].isna().all()
